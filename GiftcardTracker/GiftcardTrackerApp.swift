@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import SwiftData
 
 @main
 struct GiftcardTrackerApp: App {
@@ -13,5 +14,6 @@ struct GiftcardTrackerApp: App {
         WindowGroup {
             ContentView()
         }
+        .modelContainer(for: GiftCard.self)
     }
 }

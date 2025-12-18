@@ -1,24 +1,30 @@
 import SwiftUI
+import SwiftData
 
-struct GiftCard: Identifiable {
-    let id = UUID()
+@Model
+final class GiftCard {
     var storeName: String
     var amount: Double
     var expiryDate: Date
+
+    init(storeName: String, amount: Double, expiryDate: Date) {
+        self.storeName = storeName
+        self.amount = amount
+        self.expiryDate = expiryDate
+    }
 }
 
+
 struct ContentView: View {
-    @State private var giftCards: [GiftCard] = [
-        GiftCard(storeName: "IKEA", amount: 500, expiryDate: Calendar.current.date(byAdding: .day, value: 30, to: Date())!),
-        GiftCard(storeName: "Elkjøp", amount: 250, expiryDate: Calendar.current.date(byAdding: .day, value: 10, to: Date())!)
-    ]
+    @Environment(\.modelContext) private var modelContext
+    @Query(sort: \GiftCard.expiryDate) private var giftCards: [GiftCard]
 
     @State private var showingAddSheet = false
 
     var body: some View {
         NavigationStack {
             List {
-                ForEach(giftCards.sorted { $0.expiryDate < $1.expiryDate }) { card in
+                ForEach(giftCards) { card in
                     VStack(alignment: .leading, spacing: 4) {
                         Text(card.storeName).font(.headline)
                         Text("Beløp: \(Int(card.amount)) kr").font(.subheadline)
@@ -29,37 +35,35 @@ struct ContentView: View {
                     .padding(.vertical, 4)
                 }
                 .onDelete { indexSet in
-                    giftCards.remove(atOffsets: indexSet)
+                    for index in indexSet {
+                        modelContext.delete(giftCards[index])
+                    }
                 }
             }
             .navigationTitle("Gavekort")
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) { EditButton() }
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button {
-                        showingAddSheet = true
-                    } label: {
+                    Button { showingAddSheet = true } label: {
                         Image(systemName: "plus")
                     }
                 }
             }
             .sheet(isPresented: $showingAddSheet) {
-                AddGiftCardView { newCard in
-                    giftCards.append(newCard)
-                }
+                AddGiftCardView()
             }
         }
     }
 }
 
+
 struct AddGiftCardView: View {
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.modelContext) private var modelContext
 
     @State private var storeName: String = ""
     @State private var amountText: String = ""
-    @State private var expiryDate: Date = Date()
-
-    let onSave: (GiftCard) -> Void
+    @State private var expiryDate: Date = Calendar.current.date(byAdding: .month, value: 6, to: Date()) ?? Date()
 
     var body: some View {
         NavigationStack {
@@ -91,12 +95,13 @@ struct AddGiftCardView: View {
                             amount: amount,
                             expiryDate: expiryDate
                         )
-                        onSave(card)
+                        modelContext.insert(card)
                         dismiss()
                     }
-                    .disabled(storeName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    .disabled(storeName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || (Double(amountText.replacingOccurrences(of: ",", with: ".")) ?? 0) <= 0)
                 }
             }
         }
     }
 }
+
