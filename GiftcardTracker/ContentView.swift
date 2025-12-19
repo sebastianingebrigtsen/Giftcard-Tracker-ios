@@ -1,20 +1,6 @@
 import SwiftUI
 import SwiftData
 
-@Model
-final class GiftCard {
-    var storeName: String
-    var amount: Double
-    var expiryDate: Date
-
-    init(storeName: String, amount: Double, expiryDate: Date) {
-        self.storeName = storeName
-        self.amount = amount
-        self.expiryDate = expiryDate
-    }
-}
-
-
 struct ContentView: View {
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \GiftCard.expiryDate) private var giftCards: [GiftCard]
@@ -26,8 +12,12 @@ struct ContentView: View {
             List {
                 ForEach(giftCards) { card in
                     VStack(alignment: .leading, spacing: 4) {
-                        Text(card.storeName).font(.headline)
-                        Text("Beløp: \(Int(card.amount)) kr").font(.subheadline)
+                        Text(card.storeName)
+                            .font(.headline)
+
+                        Text("Beløp: \(Int(card.amount)) kr")
+                            .font(.subheadline)
+
                         Text("Utløper: \(card.expiryDate.formatted(date: .abbreviated, time: .omitted))")
                             .font(.caption)
                             .foregroundStyle(.secondary)
@@ -36,18 +26,41 @@ struct ContentView: View {
                 }
                 .onDelete { indexSet in
                     for index in indexSet {
-                        modelContext.delete(giftCards[index])
+                        let card = giftCards[index]
+                        NotificationManager.shared.cancelNotifications(for: card)
+                        modelContext.delete(card)
                     }
                 }
             }
             .navigationTitle("Gavekort")
             .toolbar {
-                ToolbarItem(placement: .topBarLeading) { EditButton() }
+                ToolbarItem(placement: .topBarLeading) {
+                    EditButton()
+                }
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button { showingAddSheet = true } label: {
+                    Button {
+                        showingAddSheet = true
+                    } label: {
                         Image(systemName: "plus")
                     }
                 }
+                // DEBUG-knapp (kan slettes senere)
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("DBG") {
+                        do {
+                            let all = try modelContext.fetch(FetchDescriptor<GiftCard>())
+                            print("FETCH COUNT =", all.count)
+                            print(all.map { $0.storeName })
+                        } catch {
+                            print("FETCH ERROR:", error)
+                        }
+                    }
+                }
+
+            }
+            .onAppear {
+                NotificationManager.shared.requestPermissionIfNeeded()
+                print("GiftCards in DB:", giftCards.count)
             }
             .sheet(isPresented: $showingAddSheet) {
                 AddGiftCardView()
@@ -56,14 +69,14 @@ struct ContentView: View {
     }
 }
 
-
 struct AddGiftCardView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
 
     @State private var storeName: String = ""
     @State private var amountText: String = ""
-    @State private var expiryDate: Date = Calendar.current.date(byAdding: .month, value: 6, to: Date()) ?? Date()
+    @State private var expiryDate: Date =
+        Calendar.current.date(byAdding: .month, value: 6, to: Date()) ?? Date()
 
     var body: some View {
         NavigationStack {
@@ -90,18 +103,25 @@ struct AddGiftCardView: View {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Lagre") {
                         let amount = Double(amountText.replacingOccurrences(of: ",", with: ".")) ?? 0
+
                         let card = GiftCard(
                             storeName: storeName.trimmingCharacters(in: .whitespacesAndNewlines),
                             amount: amount,
                             expiryDate: expiryDate
                         )
+
                         modelContext.insert(card)
+                        try? modelContext.save()
+
+                        NotificationManager.shared.scheduleNotifications(for: card)
                         dismiss()
                     }
-                    .disabled(storeName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || (Double(amountText.replacingOccurrences(of: ",", with: ".")) ?? 0) <= 0)
+                    .disabled(
+                        storeName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ||
+                        (Double(amountText.replacingOccurrences(of: ",", with: ".")) ?? 0) <= 0
+                    )
                 }
             }
         }
     }
 }
-
